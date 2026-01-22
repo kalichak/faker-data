@@ -16,6 +16,7 @@ venv/
 # Pacotes / builds / distribuições
 build/
 dist/
+saída/
 *.egg-info/
 *.egg
 
