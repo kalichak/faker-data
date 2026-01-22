@@ -1,363 +1,156 @@
+"""
+╔══════════════════════════════════════════════════════════════════════════╗
+║                         DATA FAKE SUITE                                  ║
+╚══════════════════════════════════════════════════════════════════════════╝
+"""
+
 import logging
-import os
 import sys
 import warnings
 import flet as ft
 
-# ==============================================================================
-# 1. CONFIGURAÇÃO E IMPORTS
-# ==============================================================================
+
+# CONFIGURAÇÃO
 warnings.filterwarnings("ignore")
 logging.basicConfig(level=logging.ERROR)
 
+
+# IMPORTS DAS FEATURES
 try:
-    from pipeline import processar
-    from file_parser import detect_encoding
+    from features.anonymizer.ui import AnonymizerTab
+    # from features.converter.ui import ConverterTab
 except ImportError as e:
-    print(f"ERRO CRÍTICO: {e}")
+    print(f"❌ ERRO CRÍTICO: Não foi possível importar as features.")
+    print(f"   Detalhes: {e}")
     sys.exit(1)
 
-def main(page: ft.Page):
-    page.title = "Anonimizador Inteligente"
-    page.padding = 20
-    page.theme_mode = "light"
 
-    # Compatibilidade de janela
+APP_CONFIG = {
+    "title": "Data Fake Suite",
+    "version": "1.0",
+    "author": "Gabriel Kalichak",
+    "window_width": 1400,
+    "window_height": 900,
+    "window_resizable": True,
+    "resizable_min_width": 800,
+    "resizable_min_height": 600,
+    "theme_mode": "",
+    "color_scheme": ft.Colors.BLUE,
+}
+
+
+def main(page: ft.Page):
+    """
+    Ponto de entrada principal da aplicação.
+    """
+    
+    #  CONFIGURAÇÃO DA PÁGINA 
+    page.title = APP_CONFIG["title"]
+    page.padding = 20
+    page.theme_mode = APP_CONFIG["theme_mode"]
+    page.theme = ft.Theme(color_scheme_seed=APP_CONFIG["color_scheme"])
+    
     try:
-        page.window.width = 1200
-        page.window.height = 800
+        page.window.width = APP_CONFIG["window_width"]
+        page.window.height = APP_CONFIG["window_height"]
     except:
         pass
 
-    # ==========================================================================
-    # 2. ESTADO E HELPERS
-    # ==========================================================================
-    state = {
-        "file_path": None,
-        "header_start": None,
-        "header_end": None,
-        "data_start": None,
-        "lines_preview": [],
-        "separator": "|"
-    }
+    #  ÁREA DE CONTEÚDO (CORPO) 
+    # Aqui é onde o conteúdo das ferramentas será exibido
+    body_container = ft.Container(expand=True)
 
-    # Helper para bordas
-    def get_border(color):
-        try:
-            return ft.border.all(1, color)
-        except:
-            return ft.Border.all(1, color)
+    #  FUNÇÃO DE TROCA DE ABAS 
+    def mudar_aba(e):
+        # Identifica qual botão foi clicado (0, 1, 2...)
+        selected_index = e.control.data
+        
+        # Atualiza o visual dos botões (destaque o selecionado)
+        for btn in menu_bar.controls:
+            if btn.data == selected_index:
+                btn.style = ft.ButtonStyle(
+                    color=ft.Colors.BLUE, 
+                    bgcolor=ft.Colors.BLUE_50
+                )
+            else:
+                btn.style = ft.ButtonStyle(
+                    color=ft.Colors.GREY_700, 
+                    bgcolor=ft.Colors.TRANSPARENT
+                )
+        
+        # Troca o conteúdo
+        body_container.content = None # Limpa
+        
+        if selected_index == 0:
+            # Carrega o Anonimizador
+            print("🔄 Carregando Anonimizador...")
+            try:
+                content = AnonymizerTab(page)
+                body_container.content = content
+            except Exception as err:
+                import traceback
+                traceback.print_exc()
+                body_container.content = ft.Text(f"Erro ao carregar feature: {err}", color="red")
+        
+        elif selected_index == 1:
+            # Exemplo para futura feature
+            body_container.content = ft.Text("🚧 Conversor em desenvolvimento...", size=20)
+        
+        elif selected_index == 2:
+            body_container.content = ft.Text("🚧 Validador em desenvolvimento...", size=20)
+            
+        page.update()
 
-    # Componentes UI básicos
-    txt_status = ft.Text("Cole o caminho do arquivo ou arraste para a janela...", color="grey")
-    lv_preview = ft.ListView(expand=True, spacing=2, padding=10)
-    
-    # Campo de texto para caminho do arquivo
-    txt_file_path = ft.TextField(
-        label="Caminho do arquivo",
-        hint_text=r"Ex: C:\Users\Gabri\arquivo.txt",
-        expand=True,
-        border_color=ft.Colors.BLUE_300
-    )
-    
-    dd_sep = ft.Dropdown(
-        label="Separador",
-        options=[
-            ft.dropdown.Option("|"),
-            ft.dropdown.Option("TAB"),
-            ft.dropdown.Option(";"),
-            ft.dropdown.Option(","),
+    #  BARRA DE MENU (ABAS MANUAIS) 
+    menu_bar = ft.Row(
+        controls=[
+            ft.TextButton(
+                content=ft.Row([ft.Icon(ft.Icons.SECURITY), ft.Text("Anonimizador")]),
+                data=0,
+                on_click=mudar_aba,
+                style=ft.ButtonStyle(color=ft.Colors.BLUE, bgcolor=ft.Colors.BLUE_50) # Começa selecionado
+            ),
+            ft.TextButton(
+                content=ft.Row([ft.Icon(ft.Icons.TRANSFORM), ft.Text("Conversor")]),
+                data=1,
+                on_click=mudar_aba
+            ),
+            ft.TextButton(
+                content=ft.Row([ft.Icon(ft.Icons.CHECK_CIRCLE), ft.Text("Validador")]),
+                data=2,
+                on_click=mudar_aba
+            ),
         ],
-        value="|",
-        width=150
+        spacing=10
     )
 
-    # ==========================================================================
-    # 3. LÓGICA
-    # ==========================================================================
-    def atualizar_cores():
-        hs = state["header_start"]
-        he = state["header_end"]
-        ds = state["data_start"]
-        
-        for c in lv_preview.controls:
-            idx = c.data
-            color = "white"
-            if hs is not None and idx == hs: 
-                color = "#81C784"
-            elif he is not None and idx == he: 
-                color = "#81C784"
-            elif hs is not None and he is not None and hs < idx < he: 
-                color = "#C8E6C9"
-            elif ds is not None and idx >= ds: 
-                color = "#E3F2FD"
-            elif ds is not None and idx == ds: 
-                color = "#64B5F6"
-            c.bgcolor = color
-        page.update()
+    #  INICIALIZAÇÃO 
+    # Carrega a primeira aba (Anonimizador) ao iniciar
+    body_container.content = AnonymizerTab(page)
 
-    def on_line_click(e):
-        idx = e.control.data
-        if state["header_start"] is None:
-            state["header_start"] = idx
-            page.snack_bar = ft.SnackBar(ft.Text("✓ Início do Header selecionado"))
-        elif state["header_end"] is None:
-            state["header_end"] = idx
-            if state["header_start"] > idx: 
-                state["header_end"] = state["header_start"]
-                state["header_start"] = idx
-            page.snack_bar = ft.SnackBar(ft.Text("✓ Fim do Header selecionado"))
-        elif state["data_start"] is None:
-            state["data_start"] = idx
-            page.snack_bar = ft.SnackBar(ft.Text("✓ Início dos Dados selecionado"))
-        else:
-            state["header_start"] = idx
-            state["header_end"] = None
-            state["data_start"] = None
-            page.snack_bar = ft.SnackBar(ft.Text("↻ Reiniciando seleção..."))
-        
-        page.snack_bar.open = True
-        atualizar_cores()
-
-    def carregar_arquivo(e):
-        """Carrega o arquivo do caminho digitado"""
-        path = txt_file_path.value.strip()
-        
-        if not path:
-            txt_status.value = "❌ Digite o caminho do arquivo!"
-            txt_status.color = "red"
-            page.update()
-            return
-        
-        # Remove aspas que o Windows adiciona ao arrastar
-        path = path.strip('"').strip("'")
-        
-        if not os.path.exists(path):
-            txt_status.value = f"❌ Arquivo não encontrado: {path}"
-            txt_status.color = "red"
-            page.update()
-            return
-        
-        state["file_path"] = path
-        txt_status.value = f"✓ Arquivo: {os.path.basename(path)}"
-        txt_status.color = "green"
-        
-        lv_preview.controls.clear()
-        state["header_start"] = None
-        state["header_end"] = None
-        state["data_start"] = None
-        
-        try:
-            enc = detect_encoding(path)
-            with open(path, "r", encoding=enc, errors="replace") as f:
-                head = [f.readline().strip() for _ in range(50)]
-            
-            state["lines_preview"] = [x for x in head if x]
-            
-            for i, txt in enumerate(state["lines_preview"]):
-                row = ft.Container(
-                    content=ft.Text(
-                        txt, 
-                        size=12, 
-                        font_family="Consolas", 
-                        color="black",
-                        overflow=ft.TextOverflow.ELLIPSIS
-                    ),
-                    padding=5,
-                    border=get_border("#E0E0E0"),
-                    bgcolor="white",
-                    data=i,
-                    on_click=on_line_click,
-                    tooltip=f"Linha {i}"
-                )
-                lv_preview.controls.append(row)
-            
-            txt_status.value = f"✓ {os.path.basename(path)} ({len(state['lines_preview'])} linhas carregadas)"
-            txt_status.color = "green"
-            page.update()
-            
-        except Exception as err:
-            txt_status.value = f"❌ Erro ao ler arquivo: {err}"
-            txt_status.color = "red"
-            page.update()
-
-    def run_process(e):
-        print("=== DEBUG: run_process iniciado ===")
-        print(f"file_path: {state['file_path']}")
-        print(f"header_start: {state['header_start']}")
-        print(f"header_end: {state['header_end']}")
-        print(f"data_start: {state['data_start']}")
-        
-        if not state["file_path"]:
-            print("ERRO: Sem arquivo")
-            page.snack_bar = ft.SnackBar(ft.Text("⚠️ Selecione um arquivo!"))
-            page.snack_bar.open = True
-            page.update()
-            return
-            
-        if state["data_start"] is None:
-            print("ERRO: Sem data_start")
-            page.snack_bar = ft.SnackBar(ft.Text("⚠️ Defina o início dos dados (linha azul)!"))
-            page.snack_bar.open = True
-            page.update()
-            return
-
-        try:
-            print("Desabilitando botão...")
-            btn_process.disabled = True
-            btn_process.content.value = "⏳ Processando..."
-            page.update()
-            
-            sep = "\t" if dd_sep.value == "TAB" else dd_sep.value
-            he = state["header_end"] if state["header_end"] else state["header_start"]
-            
-            layout = {
-                "header": {"start_line": state["header_start"], "end_line": he},
-                "data": {"start_line": state["data_start"]},
-                "separator": sep
-            }
-            
-            print(f"Layout: {layout}")
-            
-            out = state["file_path"] + "_anonimizado.txt"
-            print(f"Arquivo saída: {out}")
-            
-            print("Chamando processar()...")
-            resultado = processar(state["file_path"], out, layout)
-            print(f"Resultado processar: {resultado}")
-            
-            if os.path.exists(out):
-                print(f"✓ Arquivo criado com sucesso: {out}")
-                dlg = ft.AlertDialog(
-                    title=ft.Text("✓ Sucesso!"),
-                    content=ft.Text(f"Arquivo anonimizado salvo em:\n\n{out}"),
-                    actions=[
-                        ft.TextButton("Abrir pasta", on_click=lambda _: open_folder(out)),
-                        ft.TextButton("OK", on_click=lambda _: close_dialog(dlg))
-                    ]
-                )
-            else:
-                print("✗ Arquivo NÃO foi criado!")
-                dlg = ft.AlertDialog(
-                    title=ft.Text("⚠️ Aviso"),
-                    content=ft.Text(f"O processamento finalizou mas o arquivo não foi criado.\n\nVerifique o console para mais detalhes."),
-                    actions=[ft.TextButton("OK", on_click=lambda _: close_dialog(dlg))]
-                )
-                
-            page.dialog = dlg
-            dlg.open = True
-            page.update()
-            
-        except Exception as err:
-            import traceback
-            print("=== ERRO CAPTURADO ===")
-            print(f"Tipo: {type(err).__name__}")
-            print(f"Mensagem: {str(err)}")
-            print("Traceback completo:")
-            traceback.print_exc()
-            print("======================")
-            
-            dlg = ft.AlertDialog(
-                title=ft.Text("❌ Erro"),
-                content=ft.Text(f"Erro ao processar:\n\n{type(err).__name__}: {str(err)}\n\nVerifique o console para mais detalhes."),
-                actions=[ft.TextButton("OK", on_click=lambda _: close_dialog(dlg))]
-            )
-            page.dialog = dlg
-            dlg.open = True
-            page.update()
-        finally:
-            print("Reabilitando botão...")
-            btn_process.disabled = False
-            btn_process.content.value = "Anonimizar"
-            page.update()
-            print("=== DEBUG: run_process finalizado ===")
-
-    def close_dialog(dlg):
-        dlg.open = False
-        page.update()
+    #  CABEÇALHO DO APP 
+    header = ft.Container(
+        content=ft.Row([
+            ft.Icon(ft.Icons.ANALYTICS, size=32, color=ft.Colors.BLUE_700),
+            ft.Column([
+                ft.Text(APP_CONFIG["title"], size=24, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_700),
+                ft.Text(f"v{APP_CONFIG['version']} • Sistema Modular", size=11, color=ft.Colors.GREY_600),
+            ], spacing=0),
+        ], spacing=10),
+        padding=ft.padding.only(bottom=10)
+    )
     
-    def open_folder(filepath):
-        try:
-            import subprocess
-            folder = os.path.dirname(filepath)
-            if sys.platform == "win32":
-                os.startfile(folder)
-            elif sys.platform == "darwin":
-                subprocess.Popen(["open", folder])
-            else:
-                subprocess.Popen(["xdg-open", folder])
-        except:
-            pass
-
-    # ==========================================================================
-    # 4. BOTÕES
-    # ==========================================================================
-    btn_load = ft.ElevatedButton(
-        content=ft.Text("Carregar"),
-        icon=ft.Icons.UPLOAD_FILE,
-        on_click=carregar_arquivo,
-        bgcolor=ft.Colors.GREEN_700,
-        color=ft.Colors.WHITE
-    )
-
-    btn_process = ft.ElevatedButton(
-        content=ft.Text("Anonimizar"),
-        icon=ft.Icons.SECURITY,
-        bgcolor=ft.Colors.BLUE,
-        color=ft.Colors.WHITE,
-        on_click=run_process
-    )
-
-    # ==========================================================================
-    # 5. MONTAGEM
-    # ==========================================================================
-    top_bar = ft.Row([txt_file_path, btn_load, dd_sep, btn_process], spacing=10)
+    #  LAYOUT PRINCIPAL 
+    main_content = ft.Column([
+        header,
+        menu_bar,
+        ft.Divider(height=1, color=ft.Colors.GREY_300),
+        body_container
+    ], expand=True, spacing=10)
     
-    instrucoes = ft.Container(
-        content=ft.Column([
-            ft.Text(
-                "📋 Como usar:", 
-                size=13,
-                weight=ft.FontWeight.BOLD
-            ),
-            ft.Text(
-                "1. Cole o caminho do arquivo no campo acima (ou arraste o arquivo para a janela)", 
-                size=11
-            ),
-            ft.Text(
-                "2. Clique em 'Carregar' para visualizar o arquivo", 
-                size=11
-            ),
-            ft.Text(
-                "3. Clique nas linhas para marcar: HEADER (Verde) e DADOS (Azul)", 
-                size=11
-            ),
-            ft.Text(
-                "4. Escolha o separador e clique em 'Anonimizar'", 
-                size=11
-            ),
-        ], spacing=3),
-        bgcolor="#E3F2FD", 
-        padding=15, 
-        border_radius=5,
-        border=get_border("#90CAF9")
-    )
-
-    area_preview = ft.Container(
-        content=lv_preview,
-        expand=True,
-        border=get_border("#BDBDBD"),
-        border_radius=5,
-        bgcolor="#FAFAFA"
-    )
-
-    page.add(
-        top_bar, 
-        txt_status, 
-        instrucoes, 
-        area_preview
-    )
+    page.add(ft.Container(content=main_content, expand=True, padding=10))
     page.update()
+    print("Aplicação iniciada")
 
 if __name__ == "__main__":
     ft.app(target=main)
